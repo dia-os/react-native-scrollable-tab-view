@@ -8,9 +8,10 @@ const {
   Text,
   Platform,
   Dimensions,
+  ActivityIndicator
 } = ReactNative;
+//const Button = require('./node_modules/react-native-scrollable-tab-view/Button');
 const Button = require('./Button');
-
 const WINDOW_WIDTH = Dimensions.get('window').width;
 
 const ScrollableTabBar = React.createClass({
@@ -45,6 +46,8 @@ const ScrollableTabBar = React.createClass({
 
   getInitialState() {
     this._tabsMeasurements = [];
+    this.isLoading = false;
+    this.pageOffsetTemp = 0;
     return {
       _leftTabUnderline: new Animated.Value(0),
       _widthTabUnderline: new Animated.Value(0),
@@ -102,25 +105,80 @@ const ScrollableTabBar = React.createClass({
 
   },
 
+  // NOTE: sağa sola kaydırma işlemlerinde tab ve underline position hesaplama
+  setTabUnderline(linePosition,tabPosition,pageOffset){
+    var lineLeft = this._tabsMeasurements[linePosition].left;
+    var lineRight = this._tabsMeasurements[linePosition].right;
+
+    this.nextTabLeft = this._tabsMeasurements[tabPosition].left;
+    this.nextTabRight = this._tabsMeasurements[tabPosition].right;
+    this.newLineLeft = (pageOffset * this.nextTabLeft + (1 - pageOffset) * lineLeft);
+    this.newLineRight = (pageOffset * this.nextTabRight + (1 - pageOffset) * lineRight);
+
+    this.state._leftTabUnderline.setValue(this.newLineLeft);
+    this.state._widthTabUnderline.setValue(this.newLineRight - this.newLineLeft);
+    this.forceUpdate();
+  },
+
   updateTabUnderline(position, pageOffset, tabCount) {
-    const lineLeft = this._tabsMeasurements[position].left;
-    const lineRight = this._tabsMeasurements[position].right;
+    var lineLeft = this._tabsMeasurements[position].left;
+    var lineRight = this._tabsMeasurements[position].right;
+
+    // NOTE: sola doğru kaydırıldığını anlamak için
+    if (parseFloat(this.pageOffsetTemp) > parseFloat(pageOffset)) {
+      this.leftPosition = true;
+    }else{
+      this.leftPosition = false;
+    }
+    this.pageOffsetTemp =  pageOffset;
+
 
     if (position < tabCount - 1) {
-      const nextTabLeft = this._tabsMeasurements[position + 1].left;
-      const nextTabRight = this._tabsMeasurements[position + 1].right;
+      this.nextTabLeft = this._tabsMeasurements[position + 1].left;
+      this.nextTabRight = this._tabsMeasurements[position + 1].right;
+      this.newLineLeft = (pageOffset * this.nextTabLeft + (1 - pageOffset) * lineLeft);
+      this.newLineRight = (pageOffset * this.nextTabRight + (1 - pageOffset) * lineRight);
 
-      const newLineLeft = (pageOffset * nextTabLeft + (1 - pageOffset) * lineLeft);
-      const newLineRight = (pageOffset * nextTabRight + (1 - pageOffset) * lineRight);
-      if(this.props.activeTab!= this.currentPageNumber || pageOffset == 0)
-      {
-       this.currentPageNumber = this.props.activeTab
-       this.state._leftTabUnderline.setValue(newLineLeft);
-       this.state._widthTabUnderline.setValue(newLineRight - newLineLeft);
+      if (pageOffset == 0) {
+        this.currentPageNumber = this.props.activeTab
+        this.state._leftTabUnderline.setValue(this.newLineLeft);
+        this.state._widthTabUnderline.setValue(this.newLineRight - this.newLineLeft);
+        this.isLoading = false;
+        this.forceUpdate();
+        return;
       }
+
+      // NOTE: sağa sola kaydırılıyorsa
+      if(this.props.activeTab!= this.currentPageNumber){
+       this.currentPageNumber = this.props.activeTab
+       this.state._leftTabUnderline.setValue(this.newLineLeft);
+       this.state._widthTabUnderline.setValue(this.newLineRight - this.newLineLeft);
+       this.isLoading = false;
+       this.forceUpdate();
+     }else{
+        if(!this.isLoading){
+          var increaseLine =  position + 1;
+          var increaseTab =  position + 2;
+          if(tabCount == increaseTab){
+            increaseTab = increaseTab - 1;
+          }
+         this.setTabUnderline(increaseLine,increaseTab,pageOffset);
+       }
+
+       // NOTE: sola kaydırılıyorsa
+       if(this.leftPosition){
+         var increaseLine = position;
+         var increaseTab = position;
+         this.setTabUnderline(increaseLine,increaseTab,pageOffset);
+       }
+
+        this.isLoading = true;
+     }
     } else {
       this.state._leftTabUnderline.setValue(lineLeft);
       this.state._widthTabUnderline.setValue(lineRight - lineLeft);
+      this.isLoading = false;
+      this.forceUpdate();
     }
   },
 
@@ -159,6 +217,14 @@ const ScrollableTabBar = React.createClass({
       bottom: 0,
     };
 
+    const tabUnderIndicatorStyle = {
+      position: 'absolute',
+      height: 0,
+      backgroundColor: 'navy',
+      bottom: 12,
+      alignItems: 'center',
+    };
+
     const dynamicTabUnderline = {
       left: this.state._leftTabUnderline,
       width: this.state._widthTabUnderline,
@@ -187,7 +253,27 @@ const ScrollableTabBar = React.createClass({
             const renderTab = this.props.renderTab || this.renderTab;
             return renderTab(name, page, isTabActive, this.props.goToPage, this.measureTab.bind(this, page));
           })}
-          <Animated.View style={[tabUnderlineStyle, dynamicTabUnderline, this.props.underlineStyle, ]} />
+              {
+                this.isLoading == false ?
+                <Animated.View
+                  style={[tabUnderlineStyle, dynamicTabUnderline, this.props.underlineStyle, ]}>
+                  </Animated.View>
+                 :
+                 <Animated.View
+                   style={[dynamicTabUnderline, this.props.underlineStyle,{ backgroundColor:'transparent',position:'absolute',bottom:2,top:34,zIndex:1}]}>
+                   <View style={{height:18}}>
+                     <ActivityIndicator
+                     animating={true}
+                     color={'white'}
+
+                     style={{
+                       height:18,
+
+                     }}
+                   />
+                   </View>
+                   </Animated.View>
+              }
         </View>
       </ScrollView>
     </View>;
@@ -214,6 +300,7 @@ module.exports = ScrollableTabBar;
 const styles = StyleSheet.create({
   tab: {
     height: 49,
+
     alignItems: 'center',
     justifyContent: 'center',
     paddingLeft: 20,
